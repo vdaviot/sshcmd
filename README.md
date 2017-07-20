@@ -25,6 +25,7 @@ ftp.py is a little FTP client written in python.
 		[help, connect, cd, dc, dl, upload, ls, rename, rm, exit, rename]
 
 		(Use help command for more infos)
+		
 -------------------------------------------------------------------------------------------------
 -------------------------------------------------------------------------------------------------
 
@@ -35,3 +36,6 @@ ssh.py is a basic SSH client written in python too using paramiko.
 		[help, add, connect, run, close]
 
 		(Use help command for more infos)
+
+-------------------------------------------------------------------------------------------------
+-------------------------------------------------------------------------------------------------
