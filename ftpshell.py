@@ -13,32 +13,45 @@
 from ftplib import error_temp
 from ftplib import error_perm
 from ftplib import FTP
-import sys, cmd, getpass, ftplib, os
+import sys, cmd, getpass, ftplib, os, datetime
 
 COMMAND_LIST = ['help', 'connect', 'cd', 'dc', 'dl', 'upload', 'ls', 'rename', 'rm', 'exit', 'rename']
-EXTENSION_LIST = ['.py', '.c', '.html', '.txt']
+EXTENSION_LIST = ['.py', '.c', '.html', '.txt', '.xml']
+
+def logDecoractor(function):
+	def wrapper(self, *args, **kwargs):
+		ret = function(self, *args, **kwargs)
+		if ret: _FTP.writeToLog(self, ret)
+	return wrapper
 
 class _FTP(cmd.Cmd):
 
 	intro = "\tWelcome in FTP@AMD\n\ttype Help for more infos\n"
 	prompt = 'Anonymous>'
 
+	logFile = 'log.txt'
+	errorLog = 'error.txt'
 
 	def __init__(self, host="localhost", user="anonymous"):
 		
 		cmd.Cmd.__init__(self)
-		self.logFile = 'log.txt'
 		self.host, self.user = host, user
-		# if user is not "anonymous" and host is not "localhost":
-		# 	self.directConnection = 1
-		# else:
-		# 	self.directConnection = 0
 		self.connected = 0
 		self.home = '/'
 
 	def __str__(self):
 		return self.user + '@' + self.host + ' -> ' + self.home
 
+	def writeToLog(self, msg):
+		with open(_FTP.logFile, 'a+') as f:
+			try:
+				f.write(str(datetime.datetime.today()) + ": {}\n".format(msg))
+				f.close
+			except IOError as e:
+				f.close()
+				raise e
+
+	@logDecoractor
 	def do_connect(self, host=""): # Should be ok, needs polishing
 		'''Syntax: connect <host> <user>'''
 		if self.connected == 1:
@@ -63,104 +76,108 @@ class _FTP(cmd.Cmd):
 			print("Located in " + self.home)
 			print("Available commands:\n\t" + ', '.join(COMMAND_LIST))
 		except error_perm or error_temp as e:
-			self.logFileWrite(e)
+			return e
+		return "Connected to {} as {}.".format(self.host, self.user)
 
+	@logDecoractor
 	def do_ls(self, arg): 
 		'''List the content of a directory. Usage: ls <dir>'''
 		if self.connected == 0:
-			self.logFileWrite("Not connected to any server.\nTry connecting before trying any commands.")
-			return
+			return "Not connected to any server.\n\tTry connecting before trying any commands."
 		try:
 			directory = arg if arg != "" else "."
 			self.server.dir(directory)
+			return "Ls command on {}".format(arg)
 		except:
-			self.logFileWrite("Failed to list directory content.")
+			return "Failed to list directory content."
 
+	@logDecoractor
 	def do_rename(self, target): # working properly
 		'''Rename a file or directory. Usage: rename <toRename> <newName>'''
 		if self.connected == 0:
-			self.logFileWrite("Not connected to any server.\nTry connecting before trying any commands.")
-			return
+			return "Not connected to any server.\n\tTry connecting before trying any commands."
 		try:
 			target, name = target.split()[0], target.split()[1]
-			self.server.rename(target, name)			
+			self.server.rename(target, name)
+			return "File {} renamed to {}.".format(target, name)
 		except:
-			self.logFileWrite("Failed to rename.")
+			return "Failed to rename."
 
+	@logDecoractor
 	def do_rm(self, arg):
 		'''Delete a file from server. Usage rm <file or directory>'''
 		if self.connected == 0:
-			self.logFileWrite("Not connected to any server.\nTry connecting before trying any commands.")
-			return
+			return "Not connected to any server.\n\tTry connecting before trying any commands."
 		if arg == "":
-			self.logFileWrite("No argument given to remove command.")
+			return "No argument given to rm command."
 		try:
 			self.server.delete(arg)
+			return "File {} deleted.".format(arg)
 		except:
-			self.logFileWrite("Failed to delete {}.".format(arg))
+			return "Failed to delete {}.".format(arg)
 
+	@logDecoractor
 	def do_dc(self, arg): # seems to be working, need more testing
 		'''Disconnect from the server. Usage: dc'''
 		if self.connected == 0:
-			self.logFileWrite("Not connected to any server.\nTry connecting before trying any commands.")
-			return
+			return "Not connected to any server.\n\tTry connecting before trying any commands."
 		try:
 			self.server.quit()
 			self.connected = 0
-			print("Closed connection to host " + self.host)
+			print("Closed connection to host {}".format(self.host))
+			return "Closed connection to host {}".format(self.host)
 		except error_perm or error_temp:
-			self.logFileWrite("Failed to disconnect from the server.")
+			return "Failed to disconnect from the server."
+
 
 	def do_pwd(self, arg): #working properly
 		'''Know your actual path. Usage: pwd'''
 		if self.connected == 0:
-			self.logFileWrite("Not connected to any server.\nTry connecting before trying any commands.")
-			return
+			print ("Not connected to any server.\n\tTry connecting before trying any commands.")
 		try:
 			print(self.server.pwd())
 		except:
 			pass
 
+	@logDecoractor
 	def do_cd(self, path): # seems to be ok, may need more testing
 		'''Move to directory. Usage: cd <path of dir>'''
 		if self.connected == 0:
-			self.logFileWrite("Not connected to any server.\nTry connecting before trying any commands.")
-			return
+			return "Not connected to any server.\n\tTry connecting before trying any commands."
 		try:
 			if path is "":
 				self.server.cwd(self.home)
 			else:
 				self.server.cwd(path)
 			print(self.server.pwd())
+			return "Moved to {}.".format(self.server.pwd())
 		except:
-			self.logFileWrite("Failed to move to dir.")
+			return "Failed to move to {}.".format(path)
 
+	@logDecoractor
 	def do_dl(self, file, savePath="./"):
 		'''Download a file from the server. Usage: dl <path of file> <savePath>'''
 		pwd = self.server.pwd() + '/' + file
 		print (pwd)
 		if self.connected == 0:
-			self.logFileWrite("Not connected to any server.\nTry connecting before trying any commands.")
-			return
+			return "Not connected to any server.\n\tTry connecting before trying any commands."
 		with open(savePath + file, 'w+') as f:
-			# test si binaire ou fichier a ajouter
-				# self.server.retrbinary('RETR %s' % pwd, f.write)
-			self.server.retrlines('RETR %s' % pwd, f.write)
+			# if '.' in pwd:
+				# p = pwd.split('.')[1]
+			if p in EXTENSION_LIST: self.server.retrlines('RETR %s' % pwd, f.write) # A modifier
+			else: self.server.retrbinary('RETR %s' & pwd, f.write)
 			f.close()
+			return "File {} downloaded to {}.".format(file, savePath + file)
 
+
+	@logDecoractor
 	def do_upload(self, file, name=""):
 		'''Upload a file to the server. Usage: upload <yourfile>'''
 		if self.connected == 0:
-			self.logFileWrite("Not connected to any server.\nTry connecting before trying any commands.")
-			return
-		# ext = os.path.splitext(file)[1]
-		# print(ext)
-		# if ext in EXTENSION_LIST:
-		# test si binaire ou fichier a add
-			# if name != "":
-				# file = name
-		self.server.storbinary("STOR " + file, open(file, "rb"), 1024)
-		# self.server.storlines("STOR " + file, open(file))
+			return "Not connected to any server.\n\tTry connecting before trying any commands."
+		if os.path.splitext(file)[1] in EXTENSION_LIST: self.server.storlines("STOR %s" % file, open(file))
+		else: self.server.storbinary("STOR " + file, open(file, "rb"), 1024)
+		return "File {} uploaded to {}.".format(file, self.server.pwd() + "/{}".format(file))
 
 	def do_exit(self, arg):
 		'''Leave the program. Usage: exit'''
